@@ -186,6 +186,8 @@ public class Repository implements Writable, GsonPostProcessable {
 
     public Status initRepositoryInternal(String path) {
         prefixRepo = path;
+        // Trim any trailing slashes from location before using it
+        location = StringUtils.stripEnd(location, "/");
         String repoInfoFilePath = assembleRepoInfoFilePath();
         // check if the repo is already exist in remote
         List<RemoteFile> remoteFiles = Lists.newArrayList();
@@ -245,6 +247,7 @@ public class Repository implements Writable, GsonPostProcessable {
 
     // eg: location/__starrocks_repository_repo_name/__repo_info
     public String assembleRepoInfoFilePath() {
+        // Ensure no double slashes by using cleaned location
         return Joiner.on(PATH_DELIMITER).join(location,
                 joinPrefix(prefixRepo, name),
                 FILE_REPO_INFO);

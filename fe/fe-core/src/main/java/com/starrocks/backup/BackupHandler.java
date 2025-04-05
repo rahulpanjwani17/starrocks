@@ -228,9 +228,12 @@ public class BackupHandler extends FrontendDaemon implements Writable, MemoryTra
             }
         }
 
+        // Clean the location path before creating repository
+        String cleanLocation = StringUtils.stripEnd(stmt.getLocation(), "/");
+        
         BlobStorage storage = new BlobStorage(stmt.getBrokerName(), stmt.getProperties(), stmt.hasBroker());
         long repoId = globalStateMgr.getNextId();
-        Repository repo = new Repository(repoId, stmt.getName(), stmt.isReadOnly(), stmt.getLocation(), storage);
+        Repository repo = new Repository(repoId, stmt.getName(), stmt.isReadOnly(), cleanLocation, storage);
 
         Status st = repoMgr.addAndInitRepoIfNotExist(repo, false);
         if (!st.ok()) {
