@@ -1948,6 +1948,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static long max_planner_scalar_rewrite_num = 100000;
 
+    @ConfField(mutable = true, comment = "The max depth that scalar operator optimization can be applied")
+    public static int max_scalar_operator_optimize_depth = 256;
+
     /**
      * statistic collect flag
      */
@@ -3540,6 +3543,12 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = true)
     public static String[] group_provider = {};
+
+    /**
+     * Used to refresh the ldap group cache. All ldap group providers share the same thread pool.
+     */
+    @ConfField(mutable = false)
+    public static int group_provider_refresh_thread_num = 4;
 
     @ConfField(mutable = true)
     public static boolean transaction_state_print_partition_info = true;
