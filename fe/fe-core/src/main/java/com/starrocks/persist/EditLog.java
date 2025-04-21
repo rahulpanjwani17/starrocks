@@ -742,6 +742,7 @@ public class EditLog {
                 case OperationType.OP_MODIFY_ENABLE_PERSISTENT_INDEX:
                 case OperationType.OP_MODIFY_PRIMARY_INDEX_CACHE_EXPIRE_SEC:
                 case OperationType.OP_ALTER_TABLE_PROPERTIES:
+                case OperationType.OP_MODIFY_FLAT_JSON_CONFIG:
                 case OperationType.OP_MODIFY_TABLE_CONSTRAINT_PROPERTY: {
                     ModifyTablePropertyOperationLog modifyTablePropertyOperationLog =
                             (ModifyTablePropertyOperationLog) journal.data();
@@ -1991,6 +1992,10 @@ public class EditLog {
 
     public void logModifyBinlogConfig(ModifyTablePropertyOperationLog log) {
         logEdit(OperationType.OP_MODIFY_BINLOG_CONFIG, log);
+    }
+
+    public void logModifyFlatJsonConfig(ModifyTablePropertyOperationLog log) {
+        logEdit(OperationType.OP_MODIFY_FLAT_JSON_CONFIG, log);
     }
 
     public void logModifyBinlogAvailableVersion(ModifyTablePropertyOperationLog log) {

@@ -379,6 +379,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String CBO_PUSH_DOWN_AGGREGATE_ON_BROADCAST_JOIN_ROW_COUNT_LIMIT =
             "cbo_push_down_aggregate_on_broadcast_join_row_count_limit";
     public static final String CBO_ENABLE_INTERSECT_ADD_DISTINCT = "cbo_enable_intersect_add_distinct";
+    public static final String CBO_ENABLE_HISTOGRAM_JOIN_ESTIMATION = "cbo_enable_histogram_join_estimation";
 
     public static final String CBO_PUSH_DOWN_DISTINCT_BELOW_WINDOW = "cbo_push_down_distinct_below_window";
     public static final String CBO_PUSH_DOWN_AGGREGATE = "cbo_push_down_aggregate";
@@ -486,6 +487,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String RUNTIME_FILTER_ON_EXCHANGE_NODE = "runtime_filter_on_exchange_node";
     public static final String ENABLE_MULTI_COLUMNS_ON_GLOBAL_RUNTIME_FILTER =
             "enable_multicolumn_global_runtime_filter";
+
+    public static final String ENABLE_MULTI_COLUMNS_ON_GLOBAL_RUNTIME_FILTER_V2 =
+            "enable_multicolumn_global_runtime_filter_v2";
 
     // command, file
     public static final String TRACE_LOG_MODE = "trace_log_mode";
@@ -668,6 +672,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_VIEW_BASED_MV_REWRITE = "enable_view_based_mv_rewrite";
 
     public static final String ENABLE_CBO_VIEW_BASED_MV_REWRITE = "enable_cbo_view_based_mv_rewrite";
+
+    public static final String ENABLE_SPM_REWRITE = "enable_sql_plan_manager_rewrite";
 
     public static final String ENABLE_BIG_QUERY_LOG = "enable_big_query_log";
     public static final String BIG_QUERY_LOG_CPU_SECOND_THRESHOLD = "big_query_log_cpu_second_threshold";
@@ -978,8 +984,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = RUNTIME_FILTER_ON_EXCHANGE_NODE)
     private boolean runtimeFilterOnExchangeNode = false;
 
-    @VariableMgr.VarAttr(name = ENABLE_MULTI_COLUMNS_ON_GLOBAL_RUNTIME_FILTER)
-    private boolean enableMultiColumnsOnGlobalRuntimeFilter = false;
+    @VariableMgr.VarAttr(name = ENABLE_MULTI_COLUMNS_ON_GLOBAL_RUNTIME_FILTER_V2, alias =
+            ENABLE_MULTI_COLUMNS_ON_GLOBAL_RUNTIME_FILTER, show = ENABLE_MULTI_COLUMNS_ON_GLOBAL_RUNTIME_FILTER)
+    private boolean enableMultiColumnsOnGlobalRuntimeFilter = true;
 
     @VariableMgr.VarAttr(name = ENABLE_TABLET_INTERNAL_PARALLEL_V2,
             alias = ENABLE_TABLET_INTERNAL_PARALLEL, show = ENABLE_TABLET_INTERNAL_PARALLEL)
@@ -1642,6 +1649,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VarAttr(name = CBO_PUSH_DOWN_AGG_WITH_MULTI_COLUMN_STATS)
     private boolean cboPushDownAggWithMultiColumnStats = true;
 
+    @VarAttr(name = CBO_ENABLE_HISTOGRAM_JOIN_ESTIMATION, flag = VariableMgr.INVISIBLE)
+    private boolean cboEnableHistogramJoinEstimation = true;
+
     @VariableMgr.VarAttr(name = PARSE_TOKENS_LIMIT)
     private int parseTokensLimit = 3500000;
 
@@ -1760,7 +1770,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     // Before this, the upper/lower function only supports ascii characters, and SR has made special optimizations in performance.
     // After this change, the upper/lower function is able to handle utf8 characters,
     // but the performance will be slightly reduced in the scenario of only ascii characters.
-    // This variable is added to give the user the right to choose. 
+    // This variable is added to give the user the right to choose.
     // If the user does not use utf8 characters, turning off the switch can avoid performance degradation.
     // In order to be compatible with the previous behavior, the default value is false.
     @VarAttr(name = LOWER_UPPER_SUPPORT_UTF8)
@@ -2124,6 +2134,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = ENABLE_CBO_VIEW_BASED_MV_REWRITE)
     private boolean enableCBOViewBasedMvRewrite = false;
+
+    @VarAttr(name = ENABLE_SPM_REWRITE)
+    private boolean enableSPMRewrite = false;
 
     /**
      * Materialized view rewrite rule output limit: how many MVs would be chosen in a Rule for an OptExpr ?
@@ -3889,6 +3902,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         this.cboPushDownDistinctBelowWindow = flag;
     }
 
+    public boolean isCboEnableHistogramJoinEstimation() {
+        return cboEnableHistogramJoinEstimation;
+    }
+
+    public void setCboEnableHistogramJoinEstimation(boolean cboEnableHistogramJoinEstimation) {
+        this.cboEnableHistogramJoinEstimation = cboEnableHistogramJoinEstimation;
+    }
+
     public boolean isCboPushDownDistinctBelowWindow() {
         return this.cboPushDownDistinctBelowWindow;
     }
@@ -4774,7 +4795,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public void setMaxOrToUnionAllPredicates(int maxOrToUnionAllPredicates) {
         this.maxOrToUnionAllPredicates = maxOrToUnionAllPredicates;
     }
-  
+
     public int getTopnFilterBackPressureMode() {
         return topnFilterBackPressureMode;
     }
@@ -4821,6 +4842,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setHistoricalNodesMinUpdateInterval(int historicalNodesMinUpdateInterval) {
         this.historicalNodesMinUpdateInterval = historicalNodesMinUpdateInterval;
+    }
+
+    public boolean isEnableSPMRewrite() {
+        return enableSPMRewrite;
+    }
+
+    public void setEnableSPMRewrite(boolean enableSPMRewrite) {
+        this.enableSPMRewrite = enableSPMRewrite;
     }
 
     // Serialize to thrift object

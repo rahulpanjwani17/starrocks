@@ -38,6 +38,7 @@ import com.starrocks.StarRocksFE;
 import com.starrocks.catalog.LocalTablet;
 import com.starrocks.catalog.Replica;
 import com.starrocks.qe.scheduler.slot.QueryQueueOptions;
+import com.starrocks.qe.scheduler.slot.SlotEstimatorFactory;
 import com.starrocks.statistic.sample.NDVEstimator;
 
 import static java.lang.Math.max;
@@ -412,6 +413,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true, comment = "Whether enable the task history archive feature")
     public static boolean enable_task_history_archive = true;
 
+    @ConfField(mutable = true)
+    public static boolean enable_task_run_fe_evaluation = true;
+
     /**
      * The max keep time of some kind of jobs.
      * like schema change job and rollup job.
@@ -719,6 +723,9 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true, comment = "Schedule strategy of pending queries: SWRR/SJF")
     public static String query_queue_v2_schedule_strategy = QueryQueueOptions.SchedulePolicy.createDefault().name();
+
+    @ConfField(mutable = true, comment = "Slot estimator strategy of queue based queries: MBE/PBE/MAX/MIN")
+    public static String query_queue_slots_estimator_strategy = SlotEstimatorFactory.EstimatorPolicy.createDefault().name();
 
     /**
      * Used to estimate the number of slots of a query based on the cardinality of the Source Node. It is equal to the
@@ -1385,6 +1392,9 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = true)
     public static boolean memory_tracker_enable = true;
+
+    @ConfField(mutable = true, comment = "whether to collect metrics for warehouse")
+    public static boolean enable_collect_warehouse_metrics = true;
 
     /**
      * Decide how often to track the memory usage of the FE process
@@ -2610,7 +2620,8 @@ public class Config extends ConfigBase {
     /**
      * empty shard group clean threshold (by create time).
      */
-    @ConfField
+    @ConfField(mutable = true, comment = "protection time for FE to clean unused tablet groups in shared-data mode," +
+            " tablet groups created newer than this time period will not be cleaned.")
     public static long shard_group_clean_threshold_sec = 3600L;
 
     /**
@@ -2749,19 +2760,6 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static boolean enable_dict_optimize_stream_load = true;
 
-    /**
-     * If set to true, the following rules will apply to see if the password is secure upon the creation of a user.
-     * 1. The length of the password should be no less than 8.
-     * 2. The password should contain at least one digit, one lowercase letter, one uppercase letter
-     */
-    @ConfField(mutable = true)
-    public static boolean enable_validate_password = false;
-
-    /**
-     * If set to false, changing the password to the previous one is not allowed.
-     */
-    @ConfField(mutable = true)
-    public static boolean enable_password_reuse = true;
     /**
      * If set to false, when the load is empty, success is returned.
      * Otherwise, `No partitions have data available for loading` is returned.
@@ -3085,6 +3083,15 @@ public class Config extends ConfigBase {
     @ConfField
     public static long binlog_max_size = Long.MAX_VALUE; // no limit
 
+    @ConfField
+    public static double flat_json_null_factor = 0.3;
+
+    @ConfField
+    public static double flat_json_sparsity_factory = 0.9;
+
+    @ConfField
+    public static int flat_json_column_max = 100;
+
     /**
      * Enable check if the cluster is under safe mode or not
      **/
@@ -3190,6 +3197,9 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true)
     public static boolean enable_fast_schema_evolution_in_share_data_mode = true;
+
+    @ConfField(mutable = true)
+    public static boolean enable_partition_aggregation = false;
 
     @ConfField(mutable = true)
     public static int pipe_listener_interval_millis = 1000;
@@ -3537,6 +3547,72 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = false)
     public static String[] oidc_required_audience = {};
+
+    /**
+     * The authorization URL. The URL a user’s browser will be redirected to in order to begin the OAuth2 authorization process
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_auth_server_url = "";
+
+    /**
+     * The URL of the endpoint on the authorization server which StarRocks uses to obtain an access token
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_token_server_url = "";
+
+    /**
+     * The public identifier of the StarRocks client.
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_client_id = "";
+
+    /**
+     * The secret used to authorize StarRocks client with the authorization server.
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_client_secret = "";
+
+    /**
+     * The URL to redirect to after OAuth2 authentication is successful.
+     * OAuth2 will send the authorization_code to this URL.
+     * Normally it should be configured as http://starrocks-fe-url:fe-http-port/api/oauth2
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_redirect_url = "";
+
+    /**
+     * Maximum duration of the authorization connection wait time. Default is 5m.
+     */
+    @ConfField(mutable = false)
+    public static Long oauth2_connect_wait_timeout = 300L;
+
+    /**
+     * The URL to a JWKS service or a local file in the conf dir
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_jwks_url = "";
+
+    /**
+     * String to identify the field in the JWT that identifies the subject of the JWT.
+     * The default value is sub.
+     * The value of this field must be the same as the user specified when logging into StarRocks.
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_principal_field = "sub";
+
+    /**
+     * Specifies a string that must match the value of the JWT’s issuer (iss) field in order to consider this JWT valid.
+     * The iss field in the JWT identifies the principal that issued the JWT.
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_required_issuer = "";
+
+    /**
+     * Specifies a string that must match the value of the JWT’s Audience (aud) field in order to consider this JWT valid.
+     * The aud field in the JWT identifies the recipients that the JWT is intended for.
+     */
+    @ConfField(mutable = false)
+    public static String oauth2_required_audience = "";
 
     /**
      * The name of the group provider. If there are multiple, separate them with commas.

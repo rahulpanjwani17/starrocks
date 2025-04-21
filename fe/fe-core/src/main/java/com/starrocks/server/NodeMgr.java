@@ -171,9 +171,9 @@ public class NodeMgr {
         this.selfNode = selfNode;
     }
 
-    public void initialize(String[] args) throws Exception {
+    public void initialize(String helpers) throws Exception {
         getCheckedSelfHostPort();
-        getHelperNodes(args);
+        getHelperNodes(helpers);
     }
 
     private boolean tryLock(boolean mustLock) {
@@ -216,6 +216,10 @@ public class NodeMgr {
         }
 
         return result;
+    }
+
+    public long getAliveFrontendsCnt() {
+        return frontends.values().stream().filter(Frontend::isAlive).count();
     }
 
     public Frontend getFrontend(Integer frontendId) {
@@ -609,25 +613,8 @@ public class NodeMgr {
         }
     }
 
-    private void getHelperNodes(String[] args) {
-        String helpers = null;
-        for (int i = 0; i < args.length; i++) {
-            if (args[i].equalsIgnoreCase("-helper")) {
-                if (i + 1 >= args.length) {
-                    System.out.println("-helper need parameter host:port,host:port");
-                    System.exit(-1);
-                }
-                helpers = args[i + 1];
-                if (!helpers.contains(":")) {
-                    System.out.print("helper's format seems was wrong [" + helpers + "]");
-                    System.out.println(", eg. host:port,host:port");
-                    System.exit(-1);
-                }
-                break;
-            }
-        }
-
-        if (helpers != null) {
+    private void getHelperNodes(String helpers) {
+        if (!Strings.isNullOrEmpty(helpers)) {
             String[] splittedHelpers = helpers.split(",");
             for (String helper : splittedHelpers) {
                 Pair<String, Integer> helperHostPort = SystemInfoService.validateHostAndPort(helper, false);

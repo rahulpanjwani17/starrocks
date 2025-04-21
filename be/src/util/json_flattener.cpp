@@ -17,6 +17,7 @@
 
 #include "util/json_flattener.h"
 
+#include <storage/flat_json_config.h>
 #include <sys/types.h>
 
 #include <algorithm>
@@ -71,6 +72,41 @@ void extract_number(const vpack::Slice* json, NullableColumn* result) {
         } else if (json->isBool()) {
             result->null_column()->append(0);
             down_cast<RunTimeColumnType<TYPE>*>(result->data_column().get())->append(json->getBool());
+        } else {
+            result->append_nulls(1);
+        }
+    } catch (const vpack::Exception& e) {
+        result->append_nulls(1);
+    }
+}
+
+void extract_bool(const vpack::Slice* json, NullableColumn* result) {
+    try {
+        if (json->isNone() || json->isNull()) {
+            result->append_nulls(1);
+        } else if (json->isBool()) {
+            result->null_column()->append(0);
+            auto res = json->getBool();
+            down_cast<RunTimeColumnType<TYPE_BOOLEAN>*>(result->data_column().get())->append(res);
+        } else if (json->isString()) {
+            vpack::ValueLength len;
+            const char* str = json->getStringUnchecked(len);
+            StringParser::ParseResult parseResult;
+            auto r = StringParser::string_to_int<int32_t>(str, len, &parseResult);
+            if (parseResult != StringParser::PARSE_SUCCESS || std::isnan(r) || std::isinf(r)) {
+                bool b = StringParser::string_to_bool(str, len, &parseResult);
+                if (parseResult != StringParser::PARSE_SUCCESS) {
+                    result->append_nulls(1);
+                } else {
+                    down_cast<RunTimeColumnType<TYPE_BOOLEAN>*>(result->data_column().get())->append(b);
+                }
+            } else {
+                down_cast<RunTimeColumnType<TYPE_BOOLEAN>*>(result->data_column().get())->append(r != 0);
+            }
+        } else if (json->isNumber()) {
+            result->null_column()->append(0);
+            auto res = json->getNumber<double>();
+            down_cast<RunTimeColumnType<TYPE_BOOLEAN>*>(result->data_column().get())->append(res != 0);
         } else {
             result->append_nulls(1);
         }
@@ -180,6 +216,7 @@ static const FlatJsonHashMap<LogicalType, JsonFlatExtractFunc> JSON_EXTRACT_FUNC
     {LogicalType::TYPE_BIGINT,          &extract_number<LogicalType::TYPE_BIGINT>},
     {LogicalType::TYPE_LARGEINT,        &extract_number<LogicalType::TYPE_LARGEINT>},
     {LogicalType::TYPE_DOUBLE,          &extract_number<LogicalType::TYPE_DOUBLE>},
+    {LogicalType::TYPE_BOOLEAN,         &extract_bool},
     {LogicalType::TYPE_VARCHAR,         &extract_string},
     {LogicalType::TYPE_CHAR,            &extract_string},
     {LogicalType::TYPE_JSON,            &extract_json},
@@ -279,7 +316,7 @@ void JsonFlatPath::set_root(const std::string_view& new_root_path, JsonFlatPath*
     }
 }
 
-StatusOr<size_t> check_null_factor(const std::vector<const Column*>& json_datas) {
+StatusOr<size_t> JsonPathDeriver::check_null_factor(const std::vector<const Column*>& json_datas) {
     size_t total_rows = 0;
     size_t null_count = 0;
 
@@ -295,9 +332,9 @@ StatusOr<size_t> check_null_factor(const std::vector<const Column*>& json_datas)
     }
 
     // more than half of null
-    if (null_count > total_rows * config::json_flat_null_factor) {
+    if (null_count > total_rows * _max_json_null_factor) {
         VLOG(8) << "flat json, null_count[" << null_count << "], row[" << total_rows
-                << "], null_factor: " << config::json_flat_null_factor;
+                << "], null_factor: " << _max_json_null_factor;
         return Status::InternalError("json flat null factor too high");
     }
 
@@ -311,6 +348,18 @@ JsonPathDeriver::JsonPathDeriver(const std::vector<std::string>& paths, const st
         auto* leaf = JsonFlatPath::normalize_from_path(_paths[i], _path_root.get());
         leaf->type = types[i];
         leaf->index = i;
+    }
+}
+
+void JsonPathDeriver::init_flat_json_config(const FlatJsonConfig* flat_json_config) {
+    if (flat_json_config != nullptr) {
+        _max_json_null_factor = flat_json_config->get_flat_json_null_factor();
+        _min_json_sparsity_factory = flat_json_config->get_flat_json_sparsity_factor();
+        _max_column = flat_json_config->get_flat_json_max_column_max();
+    } else {
+        _max_json_null_factor = config::json_flat_null_factor;
+        _min_json_sparsity_factory = config::json_flat_sparsity_factor;
+        _max_column = config::json_flat_column_max;
     }
 }
 
@@ -555,6 +604,7 @@ uint32_t JsonPathDeriver::_dfs_finalize(JsonFlatPath* node, const std::string& a
         // leaf node or all children is remain
         // check sparsity, same key may appear many times in json, so we need avoid duplicate compute hits
         auto desc = _derived_maps[node];
+
         if (desc.multi_times <= 0 && desc.hits >= _total_rows * _min_json_sparsity_factory) {
             hit_leaf->emplace_back(node, absolute_path);
             node->type = flat_json::JSON_BITS_TO_LOGICAL_TYPE.at(desc.type);
@@ -601,7 +651,7 @@ void JsonPathDeriver::_finalize() {
         auto desc_b = _derived_maps[b.first];
         return desc_a.hits > desc_b.hits;
     });
-    size_t limit = config::json_flat_column_max > 0 ? config::json_flat_column_max : std::numeric_limits<size_t>::max();
+    size_t limit = _max_column > 0 ? _max_column : std::numeric_limits<size_t>::max();
     for (size_t i = limit; i < hit_leaf.size(); i++) {
         if (!hit_leaf[i].first->remain && _derived_maps[hit_leaf[i].first].hits >= _total_rows) {
             limit++;

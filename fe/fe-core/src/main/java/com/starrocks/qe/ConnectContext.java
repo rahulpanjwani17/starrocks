@@ -41,6 +41,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.starrocks.analysis.StringLiteral;
 import com.starrocks.analysis.VariableExpr;
+import com.starrocks.authentication.OAuth2Context;
 import com.starrocks.authentication.UserProperty;
 import com.starrocks.authorization.AccessDeniedException;
 import com.starrocks.authorization.ObjectType;
@@ -108,6 +109,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 // When one client connect in, we create a connection context for it.
 // We store session information here. Meanwhile, ConnectScheduler all
@@ -179,7 +181,19 @@ public class ConnectContext {
     // The Token in the OpenIDConnect authentication method is obtained
     // from the authentication logic and stored in the ConnectContext.
     // If the downstream system needs it, it needs to be obtained from the ConnectContext.
-    protected String authToken = null;
+    protected volatile String authToken = null;
+
+    // Only used in OAuth2 authentication mode to store
+    // relevant information of OAuth2 authentication.
+    // Ensure that necessary information can be obtained during OAuth2 http callback process.
+    private volatile OAuth2Context oAuth2Context = null;
+
+    // After negotiate and switching with the client,
+    // the auth plugin type used for this authentication is finally determined.
+    private String authPlugin = null;
+
+    //Auth Data salt generated at mysql negotiate used for password salting
+    private byte[] authDataSalt = null;
 
     // Serializer used to pack MySQL packet.
     protected MysqlSerializer serializer;
@@ -211,10 +225,6 @@ public class ConnectContext {
     protected String remoteIP;
 
     protected volatile boolean closed;
-
-    // set with the randomstring extracted from the handshake data at connecting stage
-    // used for authdata(password) salting
-    protected byte[] authDataSalt;
 
     protected QueryDetail queryDetail;
 
@@ -275,6 +285,11 @@ public class ConnectContext {
 
     // Whether leader is transferred during executing stmt
     private boolean isLeaderTransferred = false;
+
+    private AtomicLong currentThreadAllocatedMemory = new AtomicLong(0);
+
+    // thread id is the thread who created this ConnectContext's id
+    private AtomicLong currentThreadId = null;
 
     public void setExplicitTxnState(ExplicitTxnState explicitTxnState) {
         this.explicitTxnState = explicitTxnState;
@@ -511,6 +526,30 @@ public class ConnectContext {
 
     public void setAuthToken(String authToken) {
         this.authToken = authToken;
+    }
+
+    public void setOAuth2Context(OAuth2Context oAuth2Context) {
+        this.oAuth2Context = oAuth2Context;
+    }
+
+    public OAuth2Context getOAuth2Context() {
+        return oAuth2Context;
+    }
+
+    public void setAuthPlugin(String authPlugin) {
+        this.authPlugin = authPlugin;
+    }
+
+    public String getAuthPlugin() {
+        return authPlugin;
+    }
+
+    public void setAuthDataSalt(byte[] authDataSalt) {
+        this.authDataSalt = authDataSalt;
+    }
+
+    public byte[] getAuthDataSalt() {
+        return authDataSalt;
     }
 
     public void modifySystemVariable(SystemVariable setVar, boolean onlySetSessionVar) throws DdlException {
@@ -841,14 +880,6 @@ public class ConnectContext {
 
     public boolean needMergeProfile() {
         return sessionVariable.getPipelineProfileLevel() < TPipelineProfileLevel.DETAIL.getValue();
-    }
-
-    public byte[] getAuthDataSalt() {
-        return authDataSalt;
-    }
-
-    public void setAuthDataSalt(byte[] authDataSalt) {
-        this.authDataSalt = authDataSalt;
     }
 
     public boolean getIsLastStmt() {
@@ -1433,5 +1464,24 @@ public class ConnectContext {
 
         return endTime.isAfter(startTime)
                 && endTime.plusMillis(milliSeconds).isBefore(Instant.now());
+    }
+
+    public long getCurrentThreadAllocatedMemory() {
+        return currentThreadAllocatedMemory.get();
+    }
+
+    public void setCurrentThreadAllocatedMemory(long currentThreadAllocatedMemory) {
+        this.currentThreadAllocatedMemory.set(currentThreadAllocatedMemory);
+    }
+
+    public long getCurrentThreadId() {
+        if (currentThreadId == null) {
+            return 0;
+        }
+        return currentThreadId.get();
+    }
+
+    public void setCurrentThreadId(long currentThreadId) {
+        this.currentThreadId = new AtomicLong(currentThreadId);
     }
 }

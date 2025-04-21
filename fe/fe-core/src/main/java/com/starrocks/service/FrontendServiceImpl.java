@@ -761,6 +761,9 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                 ConnectContext context = new ConnectContext();
                 context.setCurrentUserIdentity(currentUser);
                 context.setCurrentRoleIds(currentUser);
+                if (item.getTable_database() == null || item.getTable_name() == null) {
+                    return true;
+                }
                 Authorizer.checkTableAction(context, item.getTable_database(), item.getTable_name(),
                         PrivilegeType.SELECT);
                 return false;
@@ -1254,7 +1257,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
     private void checkPasswordAndLoadPriv(String user, String passwd, String db, String tbl,
                                           String clientIp) throws AuthenticationException {
         UserIdentity currentUser = AuthenticationHandler.authenticate(new ConnectContext(), user, clientIp,
-                passwd.getBytes(StandardCharsets.UTF_8), null);
+                passwd.getBytes(StandardCharsets.UTF_8));
         // check INSERT action on table
         try {
             ConnectContext context = new ConnectContext();
@@ -1316,7 +1319,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         return result;
     }
 
-    private long loadTxnBeginImpl(TLoadTxnBeginRequest request, String clientIp) throws StarRocksException {
+    private long loadTxnBeginImpl(TLoadTxnBeginRequest request, String clientIp) throws Exception {
         checkPasswordAndLoadPriv(request.getUser(), request.getPasswd(), request.getDb(),
                 request.getTbl(), request.getUser_ip());
 
@@ -1367,7 +1370,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                 request.getUser(), request.getUser_ip(), timeoutSecond * 1000, resp, false, warehouseId);
         if (!resp.stateOK()) {
             LOG.warn(resp.msg);
-            throw new StarRocksException(resp.msg);
+            throw resp.getException();
         }
 
         StreamLoadTask task = streamLoadManager.getTaskByLabel(request.getLabel());
@@ -2392,6 +2395,13 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                 olapTable.lockCreatePartition(partitionName);
             }
 
+            // if the txn is already create partition failed, we should not create partition again
+            // because create partition failed will cause the txn to be aborted
+            if (txnState.getIsCreatePartitionFailed()) {
+                throw new StarRocksException("automatic create partition failed. error: txn " + request.getTxn_id() +
+                        " already create partition failed");
+            }
+
             // ingestion is top priority, if schema change or rollup is running, cancel it
             try {
                 String errMsg = "Alter job conflicts with partition creation, for more details please check "
@@ -2432,6 +2442,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
             errorStatus.setError_msgs(Lists.newArrayList(
                     String.format("automatic create partition failed. error:%s", e.getMessage())));
             result.setStatus(errorStatus);
+            txnState.setIsCreatePartitionFailed(true);
             return result;
         } finally {
             for (String partitionName : creatingPartitionNames) {

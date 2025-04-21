@@ -19,6 +19,7 @@ import com.starrocks.analysis.InformationFunction;
 import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.mysql.MysqlCodec;
+import com.starrocks.mysql.privilege.AuthPlugin;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.Analyzer;
@@ -81,8 +82,8 @@ public class SecurityIntegrationTest {
 
         Map<String, String> properties = new HashMap<>();
         properties.put(SecurityIntegration.SECURITY_INTEGRATION_PROPERTY_TYPE_KEY, "authentication_openid_connect");
-        properties.put(OIDCSecurityIntegration.OIDC_JWKS_URL, "jwks.json");
-        properties.put(OIDCSecurityIntegration.OIDC_PRINCIPAL_FIELD, "preferred_username");
+        properties.put(OpenIdConnectAuthenticationProvider.OIDC_JWKS_URL, "jwks.json");
+        properties.put(OpenIdConnectAuthenticationProvider.OIDC_PRINCIPAL_FIELD, "preferred_username");
 
         AuthenticationMgr authenticationMgr = GlobalStateMgr.getCurrentState().getAuthenticationMgr();
         authenticationMgr.createSecurityIntegration("oidc2", properties, true);
@@ -94,8 +95,10 @@ public class SecurityIntegrationTest {
         MysqlCodec.writeInt1(outputStream, 1);
         MysqlCodec.writeLenEncodedString(outputStream, idToken);
 
+        ConnectContext connectContext = new ConnectContext();
+        connectContext.setAuthPlugin(AuthPlugin.Client.AUTHENTICATION_OPENID_CONNECT_CLIENT.toString());
         AuthenticationHandler.authenticate(
-                new ConnectContext(), "harbor", "127.0.0.1", outputStream.toByteArray(), null);
+                connectContext, "harbor", "127.0.0.1", outputStream.toByteArray());
     }
 
     private String getOpenIdConnect(String fileName) throws IOException {
@@ -139,8 +142,8 @@ public class SecurityIntegrationTest {
 
         Map<String, String> properties = new HashMap<>();
         properties.put(OIDCSecurityIntegration.SECURITY_INTEGRATION_PROPERTY_TYPE_KEY, "authentication_openid_connect");
-        properties.put(OIDCSecurityIntegration.OIDC_JWKS_URL, "jwks.json");
-        properties.put(OIDCSecurityIntegration.OIDC_PRINCIPAL_FIELD, "preferred_username");
+        properties.put(OpenIdConnectAuthenticationProvider.OIDC_JWKS_URL, "jwks.json");
+        properties.put(OpenIdConnectAuthenticationProvider.OIDC_PRINCIPAL_FIELD, "preferred_username");
         properties.put(SecurityIntegration.SECURITY_INTEGRATION_PROPERTY_GROUP_PROVIDER, "file_group_provider");
         properties.put(SecurityIntegration.SECURITY_INTEGRATION_GROUP_ALLOWED_LOGIN, "group1");
 
@@ -169,8 +172,9 @@ public class SecurityIntegrationTest {
 
         try {
             ConnectContext connectContext = new ConnectContext();
+            connectContext.setAuthPlugin(AuthPlugin.Client.AUTHENTICATION_OPENID_CONNECT_CLIENT.toString());
             AuthenticationHandler.authenticate(
-                    connectContext, "harbor", "127.0.0.1", outputStream.toByteArray(), null);
+                    connectContext, "harbor", "127.0.0.1", outputStream.toByteArray());
             StatementBase statementBase = SqlParser.parse("select current_group()", connectContext.getSessionVariable()).get(0);
             Analyzer.analyze(statementBase, connectContext);
 
@@ -186,7 +190,7 @@ public class SecurityIntegrationTest {
         alterProperties.put(SecurityIntegration.SECURITY_INTEGRATION_GROUP_ALLOWED_LOGIN, "group_5");
         authenticationMgr.alterSecurityIntegration("oidc", alterProperties, true);
         Assert.assertThrows(AuthenticationException.class, () -> AuthenticationHandler.authenticate(
-                new ConnectContext(), "harbor", "127.0.0.1", outputStream.toByteArray(), null));
+                new ConnectContext(), "harbor", "127.0.0.1", outputStream.toByteArray()));
     }
 
     @Test
@@ -212,25 +216,14 @@ public class SecurityIntegrationTest {
         LDAPAuthProviderForNative ldapAuthProviderForNative =
                 (LDAPAuthProviderForNative) ldapSecurityIntegration.getAuthenticationProvider();
 
-        UserAuthenticationInfo userAuthenticationInfo = new UserAuthenticationInfo();
-        userAuthenticationInfo.setAuthString("");
-        Assert.assertThrows(AuthenticationException.class, () ->
-                ldapAuthProviderForNative.authenticate(
-                        new ConnectContext(),
-                        "admin",
-                        "%",
-                        "x".getBytes(StandardCharsets.UTF_8),
-                        null,
-                        userAuthenticationInfo));
+        ConnectContext context = new ConnectContext();
+        context.setAuthPlugin(AuthPlugin.Client.AUTHENTICATION_OPENID_CONNECT_CLIENT.toString());
 
-        userAuthenticationInfo.setAuthString("cn=admin,dc=example,dc=com");
         Assert.assertThrows(AuthenticationException.class, () ->
                 ldapAuthProviderForNative.authenticate(
-                        new ConnectContext(),
+                        context,
                         "admin",
                         "%",
-                        "x".getBytes(StandardCharsets.UTF_8),
-                        null,
-                        userAuthenticationInfo));
+                        "x".getBytes(StandardCharsets.UTF_8)));
     }
 }
